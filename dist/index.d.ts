@@ -1,10 +1,8 @@
 import 'dotenv/config';
 export declare class TodoistMCPServer {
-    private server;
     private apiToken;
     private baseUrl;
     constructor();
-    private setupToolHandlers;
     private makeRequest;
     private findOrCreateProject;
     createTask(args: any): Promise<{
@@ -72,5 +70,4 @@ export declare class TodoistMCPServer {
         }[];
         isError: boolean;
     }>;
-    run(): Promise<void>;
 }
