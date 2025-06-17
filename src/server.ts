@@ -1,11 +1,183 @@
 import express from 'express';
-import dotenv from 'dotenv';
-dotenv.config();
-import { TodoistMCPServer } from './index.js';
+import 'dotenv/config';
+import axios from 'axios';
+
+interface TodoistTask {
+  id?: string;
+  content: string;
+  description?: string;
+  project_id?: string;
+  due_string?: string;
+  priority?: number;
+  labels?: string[];
+}
+
+interface TodoistProject {
+  id: string;
+  name: string;
+}
+
+class TodoistService {
+  private apiToken: string;
+  private baseUrl = 'https://api.todoist.com/rest/v2';
+
+  constructor() {
+    this.apiToken = process.env.TODOIST_API_TOKEN || '';
+    if (!this.apiToken) {
+      throw new Error('TODOIST_API_TOKEN environment variable is required');
+    }
+  }
+
+  private async makeRequest(method: string, endpoint: string, data?: any) {
+    try {
+      const response = await axios({
+        method,
+        url: `${this.baseUrl}${endpoint}`,
+        headers: {
+          'Authorization': `Bearer ${this.apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        data,
+      });
+      return response.data;
+    } catch (error: any) {
+      throw new Error(`Todoist API error: ${error.response?.data?.message || error.message}`);
+    }
+  }
+
+  private async findOrCreateProject(projectName: string): Promise<string> {
+    const projects = await this.makeRequest('GET', '/projects');
+    const existingProject = projects.find((p: TodoistProject) =>
+      p.name.toLowerCase() === projectName.toLowerCase()
+    );
+
+    if (existingProject) {
+      return existingProject.id;
+    }
+
+    // Create new project
+    const newProject = await this.makeRequest('POST', '/projects', {
+      name: projectName,
+    });
+    return newProject.id;
+  }
+
+  async createTask(args: any) {
+    const taskData: any = {
+      content: args.content,
+    };
+
+    if (args.description) taskData.description = args.description;
+    if (args.due_string) taskData.due_string = args.due_string;
+    if (args.priority) taskData.priority = args.priority;
+    if (args.labels) taskData.labels = args.labels;
+
+    if (args.project_name) {
+      taskData.project_id = await this.findOrCreateProject(args.project_name);
+    }
+
+    const task = await this.makeRequest('POST', '/tasks', taskData);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Task created successfully: "${task.content}" (ID: ${task.id})`,
+        },
+      ],
+    };
+  }
+
+  async listTasks(args: any) {
+    let endpoint = '/tasks';
+    const params: string[] = [];
+
+    if (args.project_name) {
+      const projects = await this.makeRequest('GET', '/projects');
+      const project = projects.find((p: TodoistProject) =>
+        p.name.toLowerCase() === args.project_name.toLowerCase()
+      );
+      if (project) {
+        params.push(`project_id=${project.id}`);
+      }
+    }
+
+    if (args.filter) {
+      params.push(`filter=${encodeURIComponent(args.filter)}`);
+    }
+
+    if (params.length > 0) {
+      endpoint += '?' + params.join('&');
+    }
+
+    const tasks = await this.makeRequest('GET', endpoint);
+
+    const taskList = tasks.map((task: any) =>
+      `- ${task.content}${task.due ? ` (Due: ${task.due.string})` : ''} [ID: ${task.id}]`
+    ).join('\n');
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Found ${tasks.length} task(s):\n\n${taskList}`,
+        },
+      ],
+    };
+  }
+
+  async listProjects() {
+    const projects = await this.makeRequest('GET', '/projects');
+    const projectList = projects.map((project: TodoistProject) =>
+      `- ${project.name} [ID: ${project.id}]`
+    ).join('\n');
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Your Todoist projects:\n\n${projectList}`,
+        },
+      ],
+    };
+  }
+
+  async completeTask(args: any) {
+    await this.makeRequest('POST', `/tasks/${args.task_id}/close`);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Task ${args.task_id} marked as completed!`,
+        },
+      ],
+    };
+  }
+
+  async updateTask(args: any) {
+    const updateData: any = {};
+    if (args.content) updateData.content = args.content;
+    if (args.description) updateData.description = args.description;
+    if (args.due_string) updateData.due_string = args.due_string;
+    if (args.priority) updateData.priority = args.priority;
+
+    const task = await this.makeRequest('POST', `/tasks/${args.task_id}`, updateData);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Task updated successfully: "${task.content}"`,
+        },
+      ],
+    };
+  }
+}
 
 const app = express();
 app.use(express.json());
-const mcp = new TodoistMCPServer();
+
+const todoistService = new TodoistService();
 
 // Health check for Railway
 app.get('/health', (req, res) => {
@@ -18,162 +190,210 @@ app.get('/', (req, res) => {
     name: 'Todoist MCP Server',
     version: '0.1.0',
     protocol: 'MCP over HTTP',
-    endpoints: {
-      'POST /mcp/tools/list': 'List available tools',
-      'POST /mcp/tools/call': 'Call a specific tool'
-    }
+    endpoint: '/mcp',
+    usage: 'Claude-compatible MCP server for Todoist'
   });
 });
 
-// MCP Tools List
-app.post('/mcp/tools/list', (req, res) => {
-  res.json({
-    tools: [
-      {
-        name: 'create_task',
-        description: 'Create a new task in Todoist',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            content: {
-              type: 'string',
-              description: 'The task content/title',
-            },
-            description: {
-              type: 'string',
-              description: 'Optional task description',
-            },
-            project_name: {
-              type: 'string',
-              description: 'Optional project name (will find or create)',
-            },
-            due_string: {
-              type: 'string',
-              description: 'Due date in natural language (e.g., "tomorrow", "next Friday")',
-            },
-            priority: {
-              type: 'number',
-              description: 'Priority level (1-4, where 4 is urgent)',
-            },
-            labels: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Array of label names',
-            },
-          },
-          required: ['content'],
-        },
-      },
-      {
-        name: 'list_tasks',
-        description: 'List tasks from Todoist',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            project_name: {
-              type: 'string',
-              description: 'Optional project name to filter by',
-            },
-            filter: {
-              type: 'string',
-              description: 'Todoist filter query (e.g., "today", "overdue")',
-            },
-          },
-        },
-      },
-      {
-        name: 'list_projects',
-        description: 'List all Todoist projects',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-        },
-      },
-      {
-        name: 'complete_task',
-        description: 'Mark a task as completed',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            task_id: {
-              type: 'string',
-              description: 'The task ID to complete',
-            },
-          },
-          required: ['task_id'],
-        },
-      },
-      {
-        name: 'update_task',
-        description: 'Update an existing task',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            task_id: {
-              type: 'string',
-              description: 'The task ID to update',
-            },
-            content: {
-              type: 'string',
-              description: 'New task content',
-            },
-            description: {
-              type: 'string',
-              description: 'New task description',
-            },
-            due_string: {
-              type: 'string',
-              description: 'New due date in natural language',
-            },
-            priority: {
-              type: 'number',
-              description: 'New priority level (1-4)',
-            },
-          },
-          required: ['task_id'],
-        },
-      },
-    ],
-  });
-});
+// MCP protocol endpoint
+app.post('/mcp', async (req, res) => {
+  console.log('Received MCP request:', JSON.stringify(req.body, null, 2));
 
-// MCP Tool Call
-app.post('/mcp/tools/call', (req, res) => {
-  const toolName = req.body.name;
-  const toolArgs = req.body.arguments || {};
+  try {
+    const { method, params = {}, id, jsonrpc } = req.body;
 
-  const executeAsyncCall = async () => {
-    try {
-      let result;
+    let result;
 
-      if (toolName === 'create_task') {
-        result = await mcp.createTask(toolArgs);
-      } else if (toolName === 'list_tasks') {
-        result = await mcp.listTasks(toolArgs);
-      } else if (toolName === 'list_projects') {
-        result = await mcp.listProjects();
-      } else if (toolName === 'complete_task') {
-        result = await mcp.completeTask(toolArgs);
-      } else if (toolName === 'update_task') {
-        result = await mcp.updateTask(toolArgs);
-      } else {
-        return res.status(400).json({
-          error: `Unknown tool: ${toolName}`,
-          available_tools: ['create_task', 'list_tasks', 'list_projects', 'complete_task', 'update_task']
+    switch (method) {
+      case 'initialize':
+        result = {
+          protocolVersion: '2024-11-05',
+          capabilities: {
+            tools: {},
+          },
+          serverInfo: {
+            name: 'todoist-mcp-server',
+            version: '0.1.0',
+          },
+        };
+        break;
+
+      case 'tools/list':
+        result = {
+          tools: [
+            {
+              name: 'create_task',
+              description: 'Create a new task in Todoist',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  content: {
+                    type: 'string',
+                    description: 'The task content/title',
+                  },
+                  description: {
+                    type: 'string',
+                    description: 'Optional task description',
+                  },
+                  project_name: {
+                    type: 'string',
+                    description: 'Optional project name (will find or create)',
+                  },
+                  due_string: {
+                    type: 'string',
+                    description: 'Due date in natural language (e.g., "tomorrow", "next Friday")',
+                  },
+                  priority: {
+                    type: 'number',
+                    description: 'Priority level (1-4, where 4 is urgent)',
+                  },
+                  labels: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Array of label names',
+                  },
+                },
+                required: ['content'],
+              },
+            },
+            {
+              name: 'list_tasks',
+              description: 'List tasks from Todoist',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  project_name: {
+                    type: 'string',
+                    description: 'Optional project name to filter by',
+                  },
+                  filter: {
+                    type: 'string',
+                    description: 'Todoist filter query (e.g., "today", "overdue")',
+                  },
+                },
+              },
+            },
+            {
+              name: 'list_projects',
+              description: 'List all Todoist projects',
+              inputSchema: {
+                type: 'object',
+                properties: {},
+              },
+            },
+            {
+              name: 'complete_task',
+              description: 'Mark a task as completed',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  task_id: {
+                    type: 'string',
+                    description: 'The task ID to complete',
+                  },
+                },
+                required: ['task_id'],
+              },
+            },
+            {
+              name: 'update_task',
+              description: 'Update an existing task',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  task_id: {
+                    type: 'string',
+                    description: 'The task ID to update',
+                  },
+                  content: {
+                    type: 'string',
+                    description: 'New task content',
+                  },
+                  description: {
+                    type: 'string',
+                    description: 'New task description',
+                  },
+                  due_string: {
+                    type: 'string',
+                    description: 'New due date in natural language',
+                  },
+                  priority: {
+                    type: 'number',
+                    description: 'New priority level (1-4)',
+                  },
+                },
+                required: ['task_id'],
+              },
+            },
+          ],
+        };
+        break;
+
+      case 'tools/call':
+        const { name, arguments: args } = params;
+
+        switch (name) {
+          case 'create_task':
+            result = await todoistService.createTask(args);
+            break;
+          case 'list_tasks':
+            result = await todoistService.listTasks(args);
+            break;
+          case 'list_projects':
+            result = await todoistService.listProjects();
+            break;
+          case 'complete_task':
+            result = await todoistService.completeTask(args);
+            break;
+          case 'update_task':
+            result = await todoistService.updateTask(args);
+            break;
+          default:
+            throw new Error(`Unknown tool: ${name}`);
+        }
+        break;
+
+      default:
+        res.json({
+          jsonrpc: '2.0',
+          id,
+          error: {
+            code: -32601,
+            message: `Method not found: ${method}`,
+          },
         });
-      }
-
-      res.json(result);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      res.status(500).json({ error: errorMessage });
+        return;
     }
-  };
 
-  executeAsyncCall();
+    const response = {
+      jsonrpc: '2.0',
+      id,
+      result,
+    };
+
+    console.log('Sending response:', JSON.stringify(response, null, 2));
+    res.json(response);
+
+  } catch (error) {
+    console.error('Error handling MCP request:', error);
+
+    const errorResponse = {
+      jsonrpc: '2.0',
+      id: req.body.id || null,
+      error: {
+        code: -32603,
+        message: 'Internal server error',
+        data: error instanceof Error ? error.message : 'Unknown error',
+      },
+    };
+
+    res.status(500).json(errorResponse);
+  }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Todoist MCP server running on port ${PORT}`);
+  console.log(`Todoist MCP Server listening on port ${PORT}`);
+  console.log(`Health check available at: http://localhost:${PORT}/health`);
+  console.log(`MCP endpoint available at: http://localhost:${PORT}/mcp`);
 });
