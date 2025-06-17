@@ -22,7 +22,7 @@ interface TodoistProject {
   name: string;
 }
 
-class TodoistMCPServer {
+export class TodoistMCPServer {
   private server: Server;
   private apiToken: string;
   private baseUrl = 'https://api.todoist.com/rest/v2';
@@ -213,7 +213,7 @@ class TodoistMCPServer {
     return newProject.id;
   }
 
-  private async createTask(args: any) {
+  public async createTask(args: any) {
     try {
       const taskData: any = {
         content: args.content,
@@ -251,7 +251,7 @@ class TodoistMCPServer {
     }
   }
 
-  private async listTasks(args: any) {
+  public async listTasks(args: any) {
     try {
       let endpoint = '/tasks';
       const params: string[] = [];
@@ -301,7 +301,7 @@ class TodoistMCPServer {
     }
   }
 
-  private async listProjects() {
+  public async listProjects() {
     try {
       const projects = await this.makeRequest('GET', '/projects');
       const projectList = projects.map((project: TodoistProject) =>
@@ -329,7 +329,7 @@ class TodoistMCPServer {
     }
   }
 
-  private async completeTask(args: any) {
+  public async completeTask(args: any) {
     try {
       await this.makeRequest('POST', `/tasks/${args.task_id}/close`);
 
@@ -354,7 +354,7 @@ class TodoistMCPServer {
     }
   }
 
-  private async updateTask(args: any) {
+  public async updateTask(args: any) {
     try {
       const updateData: any = {};
       if (args.content) updateData.content = args.content;

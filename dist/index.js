@@ -3,7 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema, } from '@modelcontextprotocol/sdk/types.js';
 import 'dotenv/config';
 import axios from 'axios';
-class TodoistMCPServer {
+export class TodoistMCPServer {
     server;
     apiToken;
     baseUrl = 'https://api.todoist.com/rest/v2';
