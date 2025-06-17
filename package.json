@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "description": "MCP server for Todoist integration via Streamable HTTP",
   "type": "module",
-  "main": "dist/mcp-http-server.js",
+  "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
-    "start": "npm run build && node dist/mcp-http-server.js",
-    "dev": "tsx src/mcp-http-server.ts",
+    "start": "npm run build && node dist/server.js",
+    "dev": "tsx src/server.ts",
     "postinstall": "npm run build"
   },
   "dependencies": {
