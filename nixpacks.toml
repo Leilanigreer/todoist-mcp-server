@@ -17,4 +17,4 @@
 
 # start the caddy web server
 [start]
-    cmd = 'concurrently "npm run start" "caddy run --config Caddyfile --adapter caddyfile"'
+    cmd = "npm run start"
