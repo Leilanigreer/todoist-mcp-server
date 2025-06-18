@@ -309,6 +309,14 @@ app.post('/mcp', async (req, res) => {
     const request: MCPRequest = req.body;
     const { method, params = {}, id } = request;
 
+    // Handle notifications (no id field) separately
+    if (!id && method === 'notifications/initialized') {
+      console.log('NOTIFICATIONS/INITIALIZED from:', req.headers['user-agent']);
+      console.log('NOTIFICATIONS/INITIALIZED acknowledged');
+      res.status(200).end();
+      return;
+    }
+
     const response: MCPResponse = {
       jsonrpc: '2.0',
       id,
@@ -476,6 +484,14 @@ app.post('/mcp', async (req, res) => {
         if (toolResult) {
           response.result = toolResult;
         }
+        break;
+
+      case 'notifications/initialized':
+        console.log('NOTIFICATIONS/INITIALIZED from:', req.headers['user-agent']);
+        // This is a notification - don't send a response, just acknowledge
+        console.log('NOTIFICATIONS/INITIALIZED acknowledged');
+        res.status(200).end(); // Send empty 200 response
+        return; // Important: return early, don't send JSON response
         break;
 
       default:
