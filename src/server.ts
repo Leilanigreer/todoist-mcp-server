@@ -263,6 +263,20 @@ class TodoistService {
 }
 
 const app = express();
+
+// CORS middleware for Remote MCP
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, x-api-key');
+
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+    return;
+  }
+  next();
+});
+
 app.use(express.json());
 
 const todoistService = new TodoistService();
@@ -463,6 +477,7 @@ app.post('/mcp', async (req, res) => {
     }
 
     console.log('Sending response:', JSON.stringify(response, null, 2));
+    res.setHeader('Content-Type', 'application/json');
     res.json(response);
 
   } catch (error) {
