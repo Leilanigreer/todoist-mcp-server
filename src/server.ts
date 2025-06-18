@@ -460,6 +460,28 @@ app.post('/mcp', async (req, res) => {
         console.log('TOOLS/LIST response sent, tool count:', response.result.tools.length);
         break;
 
+      case 'ping':
+        console.log('PING request from:', req.headers['user-agent']);
+        response.result = {};
+        console.log('PING response sent');
+        break;
+
+      case 'resources/list':
+        console.log('RESOURCES/LIST request from:', req.headers['user-agent']);
+        response.result = {
+          resources: []
+        };
+        console.log('RESOURCES/LIST response sent (empty)');
+        break;
+
+      case 'prompts/list':
+        console.log('PROMPTS/LIST request from:', req.headers['user-agent']);
+        response.result = {
+          prompts: []
+        };
+        console.log('PROMPTS/LIST response sent (empty)');
+        break;
+
       case 'tools/call':
         const { name, arguments: args } = params;
 
