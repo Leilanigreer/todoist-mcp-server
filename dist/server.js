@@ -255,9 +255,16 @@ app.post('/mcp', async (req, res) => {
                 response.result = {
                     protocolVersion: '2024-11-05',
                     capabilities: {
-                        tools: {},
-                        resources: {},
-                        prompts: {}
+                        tools: {
+                            listChanged: true
+                        },
+                        resources: {
+                            subscribe: false,
+                            listChanged: false
+                        },
+                        prompts: {
+                            listChanged: false
+                        }
                     },
                     serverInfo: {
                         name: 'todoist-mcp-server',
