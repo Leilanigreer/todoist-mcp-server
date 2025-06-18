@@ -17,6 +17,33 @@ interface TodoistProject {
   name: string;
 }
 
+// MCP Protocol types
+interface MCPRequest {
+  jsonrpc: '2.0';
+  id?: string | number;
+  method: string;
+  params?: any;
+}
+
+interface MCPResponse {
+  jsonrpc: '2.0';
+  id?: string | number;
+  result?: any;
+  error?: {
+    code: number;
+    message: string;
+    data?: any;
+  };
+}
+
+interface MCPToolResult {
+  content: Array<{
+    type: 'text';
+    text: string;
+  }>;
+  isError?: boolean;
+}
+
 class TodoistService {
   private apiToken: string;
   private baseUrl = 'https://api.todoist.com/rest/v2';
@@ -62,115 +89,176 @@ class TodoistService {
     return newProject.id;
   }
 
-  async createTask(args: any) {
-    const taskData: any = {
-      content: args.content,
-    };
+  async createTask(args: any): Promise<MCPToolResult> {
+    try {
+      const taskData: any = {
+        content: args.content,
+      };
 
-    if (args.description) taskData.description = args.description;
-    if (args.due_string) taskData.due_string = args.due_string;
-    if (args.priority) taskData.priority = args.priority;
-    if (args.labels) taskData.labels = args.labels;
+      if (args.description) taskData.description = args.description;
+      if (args.due_string) taskData.due_string = args.due_string;
+      if (args.priority) taskData.priority = args.priority;
+      if (args.labels) taskData.labels = args.labels;
 
-    if (args.project_name) {
-      taskData.project_id = await this.findOrCreateProject(args.project_name);
-    }
-
-    const task = await this.makeRequest('POST', '/tasks', taskData);
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Task created successfully: "${task.content}" (ID: ${task.id})`,
-        },
-      ],
-    };
-  }
-
-  async listTasks(args: any) {
-    let endpoint = '/tasks';
-    const params: string[] = [];
-
-    if (args.project_name) {
-      const projects = await this.makeRequest('GET', '/projects');
-      const project = projects.find((p: TodoistProject) =>
-        p.name.toLowerCase() === args.project_name.toLowerCase()
-      );
-      if (project) {
-        params.push(`project_id=${project.id}`);
+      if (args.project_name) {
+        taskData.project_id = await this.findOrCreateProject(args.project_name);
       }
+
+      const task = await this.makeRequest('POST', '/tasks', taskData);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Task created successfully: "${task.content}" (ID: ${task.id})`,
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error creating task: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
     }
-
-    if (args.filter) {
-      params.push(`filter=${encodeURIComponent(args.filter)}`);
-    }
-
-    if (params.length > 0) {
-      endpoint += '?' + params.join('&');
-    }
-
-    const tasks = await this.makeRequest('GET', endpoint);
-
-    const taskList = tasks.map((task: any) =>
-      `- ${task.content}${task.due ? ` (Due: ${task.due.string})` : ''} [ID: ${task.id}]`
-    ).join('\n');
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Found ${tasks.length} task(s):\n\n${taskList}`,
-        },
-      ],
-    };
   }
 
-  async listProjects() {
-    const projects = await this.makeRequest('GET', '/projects');
-    const projectList = projects.map((project: TodoistProject) =>
-      `- ${project.name} [ID: ${project.id}]`
-    ).join('\n');
+  async listTasks(args: any): Promise<MCPToolResult> {
+    try {
+      let endpoint = '/tasks';
+      const params: string[] = [];
 
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Your Todoist projects:\n\n${projectList}`,
-        },
-      ],
-    };
+      if (args.project_name) {
+        const projects = await this.makeRequest('GET', '/projects');
+        const project = projects.find((p: TodoistProject) =>
+          p.name.toLowerCase() === args.project_name.toLowerCase()
+        );
+        if (project) {
+          params.push(`project_id=${project.id}`);
+        }
+      }
+
+      if (args.filter) {
+        params.push(`filter=${encodeURIComponent(args.filter)}`);
+      }
+
+      if (params.length > 0) {
+        endpoint += '?' + params.join('&');
+      }
+
+      const tasks = await this.makeRequest('GET', endpoint);
+
+      const taskList = tasks.map((task: any) =>
+        `- ${task.content}${task.due ? ` (Due: ${task.due.string})` : ''} [ID: ${task.id}]`
+      ).join('\n');
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Found ${tasks.length} task(s):\n\n${taskList}`,
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error listing tasks: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
   }
 
-  async completeTask(args: any) {
-    await this.makeRequest('POST', `/tasks/${args.task_id}/close`);
+  async listProjects(): Promise<MCPToolResult> {
+    try {
+      const projects = await this.makeRequest('GET', '/projects');
+      const projectList = projects.map((project: TodoistProject) =>
+        `- ${project.name} [ID: ${project.id}]`
+      ).join('\n');
 
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Task ${args.task_id} marked as completed!`,
-        },
-      ],
-    };
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Your Todoist projects:\n\n${projectList}`,
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error listing projects: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
   }
 
-  async updateTask(args: any) {
-    const updateData: any = {};
-    if (args.content) updateData.content = args.content;
-    if (args.description) updateData.description = args.description;
-    if (args.due_string) updateData.due_string = args.due_string;
-    if (args.priority) updateData.priority = args.priority;
+  async completeTask(args: any): Promise<MCPToolResult> {
+    try {
+      await this.makeRequest('POST', `/tasks/${args.task_id}/close`);
 
-    const task = await this.makeRequest('POST', `/tasks/${args.task_id}`, updateData);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Task ${args.task_id} marked as completed!`,
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error completing task: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
 
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Task updated successfully: "${task.content}"`,
-        },
-      ],
-    };
+  async updateTask(args: any): Promise<MCPToolResult> {
+    try {
+      const updateData: any = {};
+      if (args.content) updateData.content = args.content;
+      if (args.description) updateData.description = args.description;
+      if (args.due_string) updateData.due_string = args.due_string;
+      if (args.priority) updateData.priority = args.priority;
+
+      const task = await this.makeRequest('POST', `/tasks/${args.task_id}`, updateData);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Task updated successfully: "${task.content}"`,
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error updating task: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
   }
 }
 
@@ -200,13 +288,17 @@ app.post('/mcp', async (req, res) => {
   console.log('Received MCP request:', JSON.stringify(req.body, null, 2));
 
   try {
-    const { method, params = {}, id, jsonrpc } = req.body;
+    const request: MCPRequest = req.body;
+    const { method, params = {}, id } = request;
 
-    let result;
+    const response: MCPResponse = {
+      jsonrpc: '2.0',
+      id,
+    };
 
     switch (method) {
       case 'initialize':
-        result = {
+        response.result = {
           protocolVersion: '2024-11-05',
           capabilities: {
             tools: {},
@@ -219,7 +311,7 @@ app.post('/mcp', async (req, res) => {
         break;
 
       case 'tools/list':
-        result = {
+        response.result = {
           tools: [
             {
               name: 'create_task',
@@ -332,44 +424,43 @@ app.post('/mcp', async (req, res) => {
       case 'tools/call':
         const { name, arguments: args } = params;
 
+        let toolResult: MCPToolResult | undefined = undefined;
         switch (name) {
           case 'create_task':
-            result = await todoistService.createTask(args);
+            toolResult = await todoistService.createTask(args);
             break;
           case 'list_tasks':
-            result = await todoistService.listTasks(args);
+            toolResult = await todoistService.listTasks(args);
             break;
           case 'list_projects':
-            result = await todoistService.listProjects();
+            toolResult = await todoistService.listProjects();
             break;
           case 'complete_task':
-            result = await todoistService.completeTask(args);
+            toolResult = await todoistService.completeTask(args);
             break;
           case 'update_task':
-            result = await todoistService.updateTask(args);
+            toolResult = await todoistService.updateTask(args);
             break;
           default:
-            throw new Error(`Unknown tool: ${name}`);
+            response.error = {
+              code: -32601,
+              message: `Unknown tool: ${name}`,
+            };
+            break;
+        }
+
+        if (toolResult) {
+          response.result = toolResult;
         }
         break;
 
       default:
-        res.json({
-          jsonrpc: '2.0',
-          id,
-          error: {
-            code: -32601,
-            message: `Method not found: ${method}`,
-          },
-        });
-        return;
+        response.error = {
+          code: -32601,
+          message: `Method not found: ${method}`,
+        };
+        break;
     }
-
-    const response = {
-      jsonrpc: '2.0',
-      id,
-      result,
-    };
 
     console.log('Sending response:', JSON.stringify(response, null, 2));
     res.json(response);
@@ -377,7 +468,7 @@ app.post('/mcp', async (req, res) => {
   } catch (error) {
     console.error('Error handling MCP request:', error);
 
-    const errorResponse = {
+    const errorResponse: MCPResponse = {
       jsonrpc: '2.0',
       id: req.body.id || null,
       error: {
