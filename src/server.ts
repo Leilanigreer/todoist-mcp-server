@@ -299,7 +299,11 @@ app.get('/', (req, res) => {
 
 // MCP protocol endpoint
 app.post('/mcp', async (req, res) => {
-  console.log('Received MCP request:', JSON.stringify(req.body, null, 2));
+  console.log('=== MCP REQUEST ===');
+  console.log('Headers:', JSON.stringify(req.headers, null, 2));
+  console.log('Body:', JSON.stringify(req.body, null, 2));
+  console.log('User-Agent:', req.headers['user-agent']);
+  console.log('==================');
 
   try {
     const request: MCPRequest = req.body;
@@ -312,19 +316,24 @@ app.post('/mcp', async (req, res) => {
 
     switch (method) {
       case 'initialize':
+        console.log('INITIALIZE request from:', req.headers['user-agent']);
         response.result = {
           protocolVersion: '2024-11-05',
           capabilities: {
             tools: {},
+            resources: {},
+            prompts: {}
           },
           serverInfo: {
             name: 'todoist-mcp-server',
             version: '0.1.0',
           },
         };
+        console.log('INITIALIZE response:', JSON.stringify(response, null, 2));
         break;
 
       case 'tools/list':
+        console.log('TOOLS/LIST request from:', req.headers['user-agent']);
         response.result = {
           tools: [
             {
@@ -433,6 +442,7 @@ app.post('/mcp', async (req, res) => {
             },
           ],
         };
+        console.log('TOOLS/LIST response sent, tool count:', response.result.tools.length);
         break;
 
       case 'tools/call':
@@ -469,6 +479,7 @@ app.post('/mcp', async (req, res) => {
         break;
 
       default:
+        console.log('UNKNOWN METHOD:', method, 'from:', req.headers['user-agent']);
         response.error = {
           code: -32601,
           message: `Method not found: ${method}`,
@@ -476,7 +487,11 @@ app.post('/mcp', async (req, res) => {
         break;
     }
 
-    console.log('Sending response:', JSON.stringify(response, null, 2));
+    console.log('=== MCP RESPONSE ===');
+    console.log('Status:', res.statusCode);
+    console.log('Method:', request.method);
+    console.log('Response:', JSON.stringify(response, null, 2));
+    console.log('===================');
     res.setHeader('Content-Type', 'application/json');
     res.json(response);
 
